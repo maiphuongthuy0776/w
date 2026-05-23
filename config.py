@@ -70,8 +70,8 @@ SCHEDULED_CHANNEL_ID = [1439553447384060047,1486411439907274884]  # Thay bằng 
 
 
 # /tradiem: điểm thấp → chỉ người tra thấy (ephemeral). Điểm >= ngưỡng → thêm tin công khai vào kênh dưới.
-TRADIEM_PUBLIC_ANNOUNCE_MIN = 400  # Dưới mức này: không đăng kênh thông báo
-TRADIEM_HIGH_SCORE_CHANNEL_ID = 1439553447384060047  # Bot cần Send Messages + Embed Links
+TRADIEM_PUBLIC_ANNOUNCE_MIN = 800  # Dưới mức này: không đăng kênh thông báo
+TRADIEM_HIGH_SCORE_CHANNEL_ID = 1446866616452386856  # Bot cần Send Messages + Embed Links
 
 
 
