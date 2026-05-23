@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Optional, Tuple
 
 import discord
 from discord import app_commands
@@ -12,8 +12,8 @@ from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-# Điểm tổng kết từ mức này trở lên: gửi thông báo công khai vào TRADIEM_HIGH_SCORE_CHANNEL_ID
-TRADIEM_PUBLIC_ANNOUNCE_MIN = 400
+def _announce_min_score() -> int:
+    return int(getattr(config, "TRADIEM_PUBLIC_ANNOUNCE_MIN", 400))
 
 
 def _parse_int_score(raw) -> Optional[int]:
@@ -63,16 +63,6 @@ def _fmt_ngay_sinh(inner: dict) -> str:
     return "—"
 
 
-def _format_diem_thanh_phan(inner: dict) -> str:
-    """Một dòng điểm thành phần (Toán, Văn, Anh, KHTN) cho thông báo kênh."""
-    return (
-        f"Toán **{_fmt(inner.get('diemToan'))}** · "
-        f"Văn **{_fmt(inner.get('diemTiengViet'))}** · "
-        f"Anh **{_fmt(inner.get('diemTiengAnh'))}** · "
-        f"KHTN **{_fmt(inner.get('diemKhoaHocTuNhien'))}**"
-    )
-
-
 def _bot_icon_url(bot_user: Optional[discord.ClientUser]) -> Optional[str]:
     if bot_user is None:
         return None
@@ -107,12 +97,12 @@ def _embed_success(inner: dict, bot_user: Optional[discord.ClientUser], footer_s
     total_display = _fmt(total_raw)
     ten = _fmt(inner.get("hoVaTen"))
 
-    if total is not None and total >= TRADIEM_PUBLIC_ANNOUNCE_MIN:
+    if total is not None and total >= _announce_min_score():
         color = discord.Color.from_rgb(46, 204, 113)
         accent = "🎉"
         display_name = ten if ten != "—" else "bạn"
         celebration = (
-            f"**Chúc mừng {display_name}!** Điểm tổng kết **từ 900 trở lên** — "
+            f"**Chúc mừng {display_name}!** Điểm tổng kết **từ {_announce_min_score()} trở lên** — "
             "thành tích rất tốt, cố gắng tiếp tục phát huy nha!"
         )
     else:
@@ -177,55 +167,82 @@ class TraDiem(commands.Cog):
             async with self._waiter_count_lock:
                 self._waiter_count -= 1
 
+    async def _resolve_announce_channel(
+        self, ch_id: int
+    ) -> Tuple[Optional[discord.abc.Messageable], str]:
+        ch = self.bot.get_channel(ch_id)
+        if ch is None:
+            try:
+                ch = await self.bot.fetch_channel(ch_id)
+            except discord.HTTPException as e:
+                logger.warning("tradiem announce channel not found: %s (%s)", ch_id, e)
+                return None, (
+                    f"Không truy cập được kênh thông báo (ID `{ch_id}`). "
+                    "Kiểm tra bot đã vào đúng server và ID kênh trong config.py."
+                )
+        if not isinstance(ch, discord.abc.Messageable):
+            return None, f"Kênh `{ch_id}` không phải kênh chat."
+        if isinstance(ch, discord.abc.GuildChannel):
+            me = ch.guild.me
+            if me is None:
+                return None, "Bot chưa sẵn sàng trong server của kênh thông báo."
+            perms = ch.permissions_for(me)
+            if not perms.send_messages:
+                return None, (
+                    f"Bot **thiếu quyền Send Messages** trong {ch.mention}. "
+                    "Hãy cấp quyền gửi tin ở kênh đó."
+                )
+            if not perms.embed_links:
+                logger.warning("tradiem announce channel %s: thiếu Embed Links", ch_id)
+        return ch, ""
+
     async def _send_public_high_score(
         self,
         user: discord.abc.User,
-        total_display: str,
+        bot_user: Optional[discord.ClientUser],
         inner: dict,
-        total: int,
-    ) -> None:
-        """Luôn gửi vào TRADIEM_HIGH_SCORE_CHANNEL_ID khi điểm >= TRADIEM_PUBLIC_ANNOUNCE_MIN."""
+    ) -> Tuple[bool, str]:
+        """Gửi embed công khai vào TRADIEM_HIGH_SCORE_CHANNEL_ID."""
         ch_id = getattr(config, "TRADIEM_HIGH_SCORE_CHANNEL_ID", None)
         try:
             ch_id = int(ch_id) if ch_id is not None else None
         except (TypeError, ValueError):
             ch_id = None
         if not ch_id:
-            return
-        ch = self.bot.get_channel(ch_id)
-        if ch is None:
-            try:
-                ch = await self.bot.fetch_channel(ch_id)
-            except discord.HTTPException:
-                logger.warning("tradiem announce channel not found or inaccessible: %s", ch_id)
-                return
-        if not isinstance(ch, discord.abc.Messageable):
-            return
-        tier = f"từ {TRADIEM_PUBLIC_ANNOUNCE_MIN} trở lên"
-        try:
-            components = _format_diem_thanh_phan(inner)
-            ten = _fmt(inner.get("hoVaTen"))
-            if ten != "—":
-                who = f"**{ten}** "
-            else:
-                who = ""
-            ns = _fmt_ngay_sinh(inner)
-            line1 = (
-                f"🎉 **tradiem** · Chúc mừng {who} đạt **{total_display}** điểm ({tier})!\n"
-                f"Người tra: {user.mention}"
+            return False, (
+                "Chưa cấu hình `TRADIEM_HIGH_SCORE_CHANNEL_ID` trong config.py — "
+                "chỉ có tin riêng tư (ephemeral), không đăng kênh công khai."
             )
-            if ns != "—":
-                line1 = f"{line1}\nNgày sinh: **{ns}**"
+
+        ch, err = await self._resolve_announce_channel(ch_id)
+        if ch is None:
+            return False, err
+
+        ch_label = getattr(ch, "mention", f"<#{ch_id}>")
+        emb = _embed_success(inner, bot_user, f"Thông báo công khai · {ch_label}")
+        content = f"🎉 **tradiem** · Người tra cứu: {user.mention}"
+        try:
             await ch.send(
-                f"{line1}\nĐiểm thành phần: {components}",
+                content=content,
+                embed=emb,
                 allowed_mentions=discord.AllowedMentions(users=[user], roles=False, everyone=False),
             )
+            logger.info("tradiem public announce sent to channel %s for user %s", ch_id, user.id)
+            return True, (
+                f"📢 Đã đăng thông báo **công khai** tại {ch_label} "
+                f"(điểm từ **{_announce_min_score()}+**). "
+                "Tin embed phía trên chỉ **bạn** thấy."
+            )
         except discord.HTTPException as e:
-            logger.warning("Could not send public high-score notice: %s", e)
+            logger.warning("tradiem public announce failed (channel %s): %s", ch_id, e)
+            return False, (
+                f"Không gửi được vào {ch_label}: `{e}`. "
+                "Kiểm tra quyền bot (Send Messages, Embed Links)."
+            )
 
     @app_commands.command(
         name="tradiem",
-        description="Tra điểm ĐGNL (trong server), kết quả chỉ bạn; từ 800+ có thông báo công khai nếu cấu hình.",
+        description="Tra điểm ĐGNL: kết quả riêng tư; điểm cao đăng thêm vào kênh thông báo (xem config).",
     )
     @app_commands.describe(
         so_bao_danh="CMND/CCCD (theo form web)",
@@ -240,7 +257,8 @@ class TraDiem(commands.Cog):
         so_bao_danh: str,
         email: str,
     ):
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
         bot_user = interaction.client.user
 
         async def _notify_slash(ahead: int) -> None:
@@ -282,13 +300,12 @@ class TraDiem(commands.Cog):
         await interaction.followup.send(embed=emb, ephemeral=True)
 
         total = _parse_int_score(inner.get("diemTongKet"))
-        if total is not None and total >= TRADIEM_PUBLIC_ANNOUNCE_MIN:
-            await self._send_public_high_score(
-                interaction.user,
-                _fmt(inner.get("diemTongKet")),
-                inner,
-                total,
+        if total is not None and total >= _announce_min_score():
+            _, note = await self._send_public_high_score(
+                interaction.user, bot_user, inner
             )
+            if note:
+                await interaction.followup.send(note, ephemeral=True)
 
     @commands.command(name="tradiem")
     async def tradiem_prefix(
@@ -331,13 +348,10 @@ class TraDiem(commands.Cog):
         await ctx.send(embed=emb)
 
         total = _parse_int_score(inner.get("diemTongKet"))
-        if total is not None and total >= TRADIEM_PUBLIC_ANNOUNCE_MIN:
-            await self._send_public_high_score(
-                ctx.author,
-                _fmt(inner.get("diemTongKet")),
-                inner,
-                total,
-            )
+        if total is not None and total >= _announce_min_score():
+            _, note = await self._send_public_high_score(ctx.author, self.bot.user, inner)
+            if note:
+                await ctx.send(note)
 
 
 async def setup(bot):
