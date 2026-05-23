@@ -1,0 +1,14 @@
+# Dùng khi Railway build bằng Nixpacks (không dùng Dockerfile).
+# Khuyến nghị: chuyển Builder sang Dockerfile (file Dockerfile ở gốc project).
+
+[variables]
+NIXPACKS_PYTHON_VERSION = "3.11"
+
+[phases.install]
+cmds = [
+  "pip install -r requirements.txt",
+  "python -m playwright install --with-deps chromium",
+]
+
+[start]
+cmd = "python bot.py"
