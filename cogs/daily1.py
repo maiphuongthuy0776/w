@@ -25,8 +25,9 @@ BROADCAST_CHANNEL_IDS = (1446866616452386856,)
 
 def _ad_message() -> str:
     return (
-        "Quảng cáo\n\n"
+        "Quảng cáo, sử dụng lệnh /tradiem để xem điểm bảo mật \n\n"
         f"Kênh 1: {CHANNEL_1_LINK}\n"
+        
     )
 
 
