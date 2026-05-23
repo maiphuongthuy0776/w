@@ -69,7 +69,9 @@ DONATE_COOLDOWN = 3600  # Thời gian chờ giữa 2 lần gửi donate (giây, 
 SCHEDULED_CHANNEL_ID = [1439553447384060047,1486411439907274884]  # Thay bằng ID kênh của bạn
 
 
-
+# /tradiem: điểm thấp → chỉ người tra thấy (ephemeral). Điểm >= ngưỡng → thêm tin công khai vào kênh dưới.
+TRADIEM_PUBLIC_ANNOUNCE_MIN = 400  # Dưới mức này: không đăng kênh thông báo
+TRADIEM_HIGH_SCORE_CHANNEL_ID = 1439553447384060047  # Bot cần Send Messages + Embed Links
 
 
 
