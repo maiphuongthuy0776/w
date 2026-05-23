@@ -1,6 +1,9 @@
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
+# Nếu Railway vẫn dùng Nixpacks, dòng dưới cài Playwright lúc build:
+buildCommand = "pip install -r requirements.txt && python -m playwright install --with-deps chromium"
 
 [deploy]
-startCommand = "python bot.py"
+# Script cài lại pip + chromium mỗi lần start (phòng build bỏ sót)
+startCommand = "bash scripts/railway_start.sh"

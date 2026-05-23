@@ -97,6 +97,20 @@ async def list_cogs(ctx: commands.Context):
 
 
 if __name__ == '__main__':
+    try:
+        from utils.playwright_bootstrap import ensure_playwright_ready
+
+        pw_ok, pw_msg = ensure_playwright_ready()
+        if pw_ok:
+            logger.info("Playwright bootstrap: %s", pw_msg)
+        else:
+            logger.warning(
+                "Playwright bootstrap FAILED (%s) — !tradiem sẽ lỗi cho đến khi cài Chromium",
+                pw_msg,
+            )
+    except Exception as e:
+        logger.warning("Playwright bootstrap skipped: %s", e)
+
     bot.run(config.TOKEN)
 
 

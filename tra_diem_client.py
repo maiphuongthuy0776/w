@@ -119,12 +119,28 @@ def _tra_diem_impl(so_bao_danh: str, email: str) -> Dict[str, Any]:
     if dot_id is None:
         return {"code": 404, "msg": "Không tìm thấy đợt thi", "data": {}}
 
+    from utils.playwright_bootstrap import ensure_playwright_ready
+
+    ok, boot_msg = ensure_playwright_ready()
+    if not ok:
+        return {
+            "code": 503,
+            "msg": (
+                f"Playwright/Chromium chưa sẵn sàng trên máy chủ: {boot_msg}. "
+                "Railway: bật Builder = Dockerfile hoặc Start Command = bash scripts/railway_start.sh"
+            ),
+            "data": {},
+        }
+
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
         return {
             "code": 503,
-            "msg": "Cần Playwright: pip install playwright && playwright install chromium",
+            "msg": (
+                "Không import được playwright sau khi cài. "
+                f"Chi tiết: {boot_msg}. Thử redeploy với Dockerfile."
+            ),
             "data": {},
         }
 
