@@ -25,10 +25,9 @@ BROADCAST_CHANNEL_IDS = (1446866616452386856,1500890702496792597)
 
 def _ad_message() -> str:
     return (
-        "Bấm vào các link sau để xem tư vấn về ngành học và tất cả mọi vấn đề về cuộc sống và hướng nghiệp:\n\n"
+        "Quảng cáo, sử dụng /tradiem để xem điểm ( chỉ có bạn xem):\n\n"
         f"Kênh 1: {CHANNEL_1_LINK}\n"
-        f"Kênh 2: {CHANNEL_2_LINK}\n"
-        f"Kênh 3: <#{EXTRA_CHANNEL_ID}>"
+       
     )
 
 
