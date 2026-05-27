@@ -24,13 +24,13 @@ GMT7 = timezone(timedelta(hours=7))
 SCHEDULES = [
     # ── TEST: Gửi lúc 00:45 GMT+7 (2 phút nữa) ──────────────────────────
     {
-        "hour": 1,
+        "hour": 20,
         "minute": 00,
-        "message": "https://tenor.com/npvU103kU4J.gif",
+        "message": "https://www.youtube.com/watch?v=SlQR9iu09bQ",
         "embed_title": None,
         "embed_desc": None,
         "embed_color": None,
-        "enabled": False,   # ← Đổi thành True để bật
+        "enabled": True,   # ← Đổi thành True để bật
     },
     # ── Ví dụ 2: Embed lúc 12:00 trưa ──────────────────────────────────────
     {
