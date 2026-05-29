@@ -16,7 +16,7 @@ DIEM_DGNL_DOT1_AT = datetime(2026, 6, 6, 8, 30, 0, tzinfo=GMT7)
 TRA_DIEM_URL = "https://thinangluc.vnuhcm.edu.vn/dgnl/search-result-exam"
 
 # Kênh nhận tin đếm ngược mỗi ngày
-CHANNEL_IDS = [1486411439907274884, 1488535706954498079,1446866616452386856]
+CHANNEL_IDS = [1509761407535546419]
 
 # Giờ gửi bản đếm ngược mỗi ngày — 8h30 và 22h (GMT+7)
 DAILY_POST_TIMES = (
