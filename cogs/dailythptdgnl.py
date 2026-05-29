@@ -19,10 +19,10 @@ GMT7 = timezone(timedelta(hours=7))
 # ─── CẤU HÌNH — sửa tại đây ─────────────────────────────────────────────
 # Điền "YYYY-MM-DD" khi có lịch; None = không gửi đếm ngược tự động cho kỳ đó
 THPT_EXAM_DATE: Optional[str] = "2026-06-11"
-DGNL_EXAM_DATE: Optional[str] = "2026-05-24"
+DGNL_EXAM_DATE: Optional[str] = "2027-04-05"
 
 # Cả THPT và ĐGNL đều gửi vào chung các kênh sau (Discord Channel ID)
-COUNTDOWN_NOTIFY_CHANNEL_IDS: tuple[int, ...] = (1446866616452386856,1486411439907274884)
+COUNTDOWN_NOTIFY_CHANNEL_IDS: tuple[int, ...] = (1509761407535546419,1509762286523388004)
 
 # Giờ gửi đếm ngược mỗi ngày (múi giờ +7)
 NOTIFY_TIMES_GMT7 = (
