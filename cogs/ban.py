@@ -125,7 +125,7 @@ class BannedWords(commands.Cog):
 
         terms_display = ", ".join(f"`{discord.utils.escape_markdown(m)}`" for m in matches)
         notice = (
-            f"{member.mention} — Tin chứa từ/cụm cấm: {terms_display}. "
+            f"{member.mention} — Mình là minh nghi: . "
             f"Đã timeout **{minutes}** phút."
         )
 
