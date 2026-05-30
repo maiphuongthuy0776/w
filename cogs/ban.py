@@ -12,7 +12,7 @@ _MESSAGEABLE_GUILD = (discord.TextChannel, discord.Thread, discord.VoiceChannel)
 # --- Cấu hình — chỉnh trực tiếp trong file này ---
 # Khớp không phân biệt hoa thường (substring trong tin + chữ trong embed). List rỗng = tắt lọc.
 BANNED_WORDS: list[str] = [
-    "testbot11","BHHAHAHA","yoooooo watch the girl in vc BHHAHAHA","yoooooo watch","https://discord.com/channels/1184348724999225355/1411448689192603669","trong trường hợp nhóm này bị điều tra", 
+    "testbot11","BHHAHAHA","yoooooo watch the girl in vc BHHAHAHA","yoooooo watch","https://discord.com/channels/1184348724999225355/1411448689192603669","trong trường hợp nhóm này bị điều tra","tôi khẳng định mình không liên quan tới nhóm", 
 ]
 
 # Timeout (phút) — Discord tối đa ~40320 phút (~28 ngày).
