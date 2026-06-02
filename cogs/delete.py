@@ -10,8 +10,7 @@ ALLOWED_ROLE_IDS = [1185158470958333953]
 BANNED_WORDS = [
     # === Từ tục tĩu tiếng Việt ===
     "địt", "đĩ", "lồn", "cặc", "buồi", "chịch", "đéo", "đụ",
-    "vãi lồn", "vl", "clm", "đmm", "đm", "đmcs", "đcm",
-    "mẹ mày", "mẹ m", "má mày", "má m",
+    "vãi lồn", "clm", "đmm", "đm", "đmcs", "đcm",
     "con chó", "thằng chó", "đồ chó", "súc vật",
     "ngu", "óc chó", "não cá vàng", "đần", "khùng", "điên",
     "mày chết đi", "chết đi", "tự tử",
@@ -21,7 +20,7 @@ BANNED_WORDS = [
     "bắc kỳ", 
 
     # === Spam / quảng cáo phổ biến ===
-    "kiếm tiền online", "free robux", "click vào link","bro"
+    "kiếm tiền online", "free robux", "ccbm",
 ]
 
 class Delete(commands.Cog):
