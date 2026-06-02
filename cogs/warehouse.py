@@ -34,26 +34,14 @@ def _member_allowed(member: discord.Member) -> bool:
     return bool(role_ids & WAREHOUSE_ROLE_IDS)
 
 
-def _is_channel_owner(ctx: commands.Context) -> bool:
-    """Kiểm tra user có phải chủ channel không (owner của server hoặc có manage_channels)."""
-    if not isinstance(ctx.author, discord.Member):
-        return False
-    channel = ctx.channel
-    # Chủ server luôn được
-    if ctx.guild and ctx.guild.owner_id == ctx.author.id:
+def _viewer_allowed(author: discord.Member, guild: discord.Guild) -> bool:
+    """Trả về True nếu user được thấy kết quả tra cứu:
+    - Có role trong WAREHOUSE_ROLE_IDS, HOẶC
+    - Là owner của server.
+    """
+    if guild.owner_id == author.id:
         return True
-    # Có quyền manage_channels trên kênh này
-    if isinstance(channel, discord.TextChannel):
-        perms = channel.permissions_for(ctx.author)
-        return perms.manage_channels
-    return False
-
-
-def _user_can_view(ctx: commands.Context) -> bool:
-    """Trả về True nếu user được xem kết quả tra cứu."""
-    if not isinstance(ctx.author, discord.Member):
-        return False
-    return _member_allowed(ctx.author) or _is_channel_owner(ctx)
+    return _member_allowed(author)
 
 
 class Warehouse(commands.Cog):
@@ -318,22 +306,9 @@ class Warehouse(commands.Cog):
         if doc is None:
             return
 
-        # Kiểm tra quyền xem
-        # Tạo giả ctx-like object để dùng lại hàm _user_can_view
-        # Ta kiểm tra trực tiếp tại đây
+        # Kiểm tra quyền xem: phải có role hoặc là owner server
         author = message.author
-        channel = message.channel
-
-        has_role = _member_allowed(author)
-        is_owner = False
-        if message.guild and message.guild.owner_id == author.id:
-            is_owner = True
-        elif isinstance(channel, discord.TextChannel):
-            perms = channel.permissions_for(author)
-            is_owner = perms.manage_channels
-
-        if not has_role and not is_owner:
-            # Im lặng
+        if not _viewer_allowed(author, message.guild):
             return
 
         link = str(doc.get("link", "")).strip()
