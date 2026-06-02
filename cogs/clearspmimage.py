@@ -56,7 +56,7 @@ AUTO_SCAN_CHANNEL_IDS: frozenset[int] = frozenset({1411520340508807178})
 
 # Chỉ member có một trong các role này mới được @mention bot để quét ảnh (mọi kênh)
 REPORT_AUTHOR_ROLE_IDS: frozenset[int] = frozenset({1469581542841122918,
-1472560579007746079,1185158470958333953,1484957377135509667,1349964871462158376})
+1472560579007746079,1185158470958333953,1484957377135509667,1349964871462158376,1185184103650312234,1185183734153097296})
 
 # Danh sách vi phạm ảnh (ghi sau timeout thành công); !list đọc file này
 VIOLATIONS_JSON_PATH = os.path.join("data", "list.json")
