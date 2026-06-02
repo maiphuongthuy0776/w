@@ -240,6 +240,54 @@ class Warehouse(commands.Cog):
             return
         raise error
 
+    # ─── Lệnh !dskho ──────────────────────────────────────────────────────────
+
+    @commands.command(name="dskho")
+    async def dskho(self, ctx: commands.Context) -> None:
+        """!dskho — xem danh sách tất cả từ khoá đã lưu trong kho."""
+        if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+            return
+
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+
+        if not _member_allowed(ctx.author):
+            return
+
+        if self._db is None:
+            await ctx.send("⚠️ Chưa cấu hình MongoDB.", delete_after=8)
+            return
+
+        rows = await self._list_all(ctx.guild.id)
+        if not rows:
+            await ctx.send("📭 Kho từ khoá đang trống. Dùng `!them <tên> <link>` để thêm.", delete_after=10)
+            return
+
+        lines: List[str] = []
+        for i, r in enumerate(rows, 1):
+            kw = str(r.get("keyword", "?"))
+            lk = str(r.get("link", ""))
+            lines.append(f"`{i}.` **{discord.utils.escape_markdown(kw)}** → {lk}")
+
+        header = f"📦 **Kho từ khoá** ({len(rows)} mục):\n"
+        chunk: List[str] = []
+        size = len(header)
+
+        for line in lines:
+            extra = len(line) + 1
+            if chunk and size + extra > 1900:
+                await ctx.send(header + "\n".join(chunk), delete_after=30)
+                chunk = [line]
+                size = len(header) + len(line)
+            else:
+                chunk.append(line)
+                size += extra
+
+        if chunk:
+            await ctx.send(header + "\n".join(chunk), delete_after=30)
+
     # ─── Tra cứu tự động khi gõ tên ──────────────────────────────────────────
 
     @commands.Cog.listener()
