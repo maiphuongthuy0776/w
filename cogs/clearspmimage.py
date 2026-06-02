@@ -48,12 +48,15 @@ MAX_IMAGES_PER_MESSAGE = 4
 MAX_IMAGE_BYTES = 3_800_000
 TIMEOUT_DURATION = timedelta(hours=600)
 
+# Cooldown giữa 2 lần báo cáo của cùng 1 người (giây)
+REPORT_COOLDOWN_SECONDS = 120 * 60  # 120 phút
+
 # Kênh tự quét mỗi tin nhắn mới (đổi sang Channel ID thật nếu 987/123 là placeholder)
 AUTO_SCAN_CHANNEL_IDS: frozenset[int] = frozenset({1411520340508807178})
 
 # Chỉ member có một trong các role này mới được @mention bot để quét ảnh (mọi kênh)
 REPORT_AUTHOR_ROLE_IDS: frozenset[int] = frozenset({1469581542841122918,
-1472560579007746079,1185158470958333953})
+1472560579007746079,1185158470958333953,1484957377135509667,1349964871462158376})
 
 # Danh sách vi phạm ảnh (ghi sau timeout thành công); !list đọc file này
 VIOLATIONS_JSON_PATH = os.path.join("data", "list.json")
@@ -362,6 +365,8 @@ class ClearSpamImage(commands.Cog):
         self.bot = bot
         self._seen: set[int] = set()
         self._violations_io_lock = asyncio.Lock()
+        # Lưu thời điểm báo cáo cuối cùng của mỗi người: {user_id: datetime}
+        self._report_cooldown: dict[int, datetime] = {}
 
     def _should_auto_scan(self, message: discord.Message) -> bool:
         if message.author.bot:
@@ -629,6 +634,39 @@ class ClearSpamImage(commands.Cog):
         if self._should_report_scan(message):
             if not has_image_hint and not message.reference:
                 return
+
+            # Kiểm tra cooldown 120 phút giữa 2 lần báo cáo
+            reporter_id = message.author.id
+            now = datetime.now(timezone.utc)
+            last_report = self._report_cooldown.get(reporter_id)
+            if last_report is not None:
+                elapsed = (now - last_report).total_seconds()
+                if elapsed < REPORT_COOLDOWN_SECONDS:
+                    remaining_minutes = int((REPORT_COOLDOWN_SECONDS - elapsed) / 60) + 1
+                    remaining_seconds = int(REPORT_COOLDOWN_SECONDS - elapsed)
+                    _out(
+                        f"Cooldown báo cáo: user={reporter_id} còn {remaining_minutes} phút "
+                        f"({remaining_seconds}s) mới được báo cáo lại."
+                    )
+                    try:
+                        await message.reply(
+                            f"⏳ Bạn vừa báo cáo gần đây. Vui lòng chờ thêm **{remaining_minutes} phút** "
+                            f"trước khi báo cáo lần tiếp theo.",
+                            mention_author=True,
+                        )
+                    except discord.HTTPException:
+                        pass
+                    return
+
+            # Ghi lại thời điểm báo cáo
+            self._report_cooldown[reporter_id] = now
+            # Dọn dict để tránh tràn bộ nhớ (giữ tối đa 5000 entry)
+            if len(self._report_cooldown) > 5000:
+                cutoff = now - timedelta(seconds=REPORT_COOLDOWN_SECONDS)
+                self._report_cooldown = {
+                    uid: t for uid, t in self._report_cooldown.items() if t > cutoff
+                }
+
             _out(
                 f"on_message REPORT kênh={message.channel.id} msg={message.id} "
                 f"ref={message.reference.message_id if message.reference else None}"
