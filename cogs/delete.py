@@ -6,9 +6,48 @@ logger = setup_logger(__name__)
 
 ALLOWED_ROLE_IDS = [1185158470958333953]
 
+# Danh sách từ không được phép (viết thường, không phân biệt hoa/thường)
+BANNED_WORDS = [
+    # === Từ tục tĩu tiếng Việt ===
+    "địt", "đĩ", "lồn", "cặc", "buồi", "chịch", "đéo", "đụ",
+    "vãi lồn", "vl", "clm", "đmm", "đm", "đmcs", "đcm",
+    "mẹ mày", "mẹ m", "má mày", "má m",
+    "con chó", "thằng chó", "đồ chó", "súc vật",
+    "ngu", "óc chó", "não cá vàng", "đần", "khùng", "điên",
+    "mày chết đi", "chết đi", "tự tử",
+    "thằng điên", "con điên", "thằng ngu", "con ngu",
+
+    # === Phân biệt vùng miền / kỳ thị ===
+    "bắc kỳ", 
+
+    # === Spam / quảng cáo phổ biến ===
+    "kiếm tiền online", "free robux", "click vào link","bro"
+]
+
 class Delete(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        # Bỏ qua tin nhắn của bot
+        if message.author.bot:
+            return
+
+        content_lower = message.content.lower()
+        if any(word in content_lower for word in BANNED_WORDS):
+            try:
+                await message.delete()
+                logger.info(
+                    f"Đã xóa tin nhắn của {message.author} trong #{message.channel.name} "
+                    f"vì chứa từ bị cấm (ID: {message.id})"
+                )
+            except discord.Forbidden:
+                logger.error(f"Không có quyền xóa tin nhắn {message.id} trong #{message.channel.name}")
+            except discord.NotFound:
+                pass
+            except Exception as e:
+                logger.error(f"Lỗi khi xóa tin nhắn từ bị cấm {message.id}: {e}")
 
     @commands.command(name="delete")
     @commands.has_permissions(manage_messages=True)
