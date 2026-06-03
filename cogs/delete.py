@@ -8,19 +8,8 @@ ALLOWED_ROLE_IDS = [1185158470958333953]
 
 # Danh sách từ không được phép (viết thường, không phân biệt hoa/thường)
 BANNED_WORDS = [
-    # === Từ tục tĩu tiếng Việt ===
-    "địt", "đĩ", "lồn", "cặc", "buồi", "chịch", "đéo", "đụ",
-    "vãi lồn", "clm", "đmm", "đm", "đmcs", "đcm",
-    "con chó", "thằng chó", "đồ chó", "súc vật",
-    "ngu", "óc chó", "não cá vàng", "đần", "khùng", "điên",
-    "mày chết đi", "chết đi", "tự tử",
-    "thằng điên", "con điên", "thằng ngu", "con ngu",
-
-    # === Phân biệt vùng miền / kỳ thị ===
-    "bắc kỳ", 
-
-    # === Spam / quảng cáo phổ biến ===
-    "kiếm tiền online", "free robux", "ccbm",
+  
+    
 ]
 
 class Delete(commands.Cog):
