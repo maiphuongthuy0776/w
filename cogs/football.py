@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import aiohttp
 import discord
 from discord.ext import commands, tasks
+from discord import ui
 
 from utils.logger import setup_logger
 
@@ -27,22 +28,127 @@ CACHE_REFRESH_INTERVAL = timedelta(minutes=60)
 ERROR_RETRY_INTERVAL = timedelta(minutes=5)
 REQUEST_TIMEOUT_SECONDS = 20
 
+# How often to check for finished matches to announce predictions
+RESULT_CHECK_INTERVAL = timedelta(minutes=5)
+
+
+# --------------------------------------------------------------------------- #
+#  Prediction UI                                                                #
+# --------------------------------------------------------------------------- #
+
+class PredictModal(ui.Modal, title="Dự đoán tỷ số trận đấu"):
+    """Modal nhập tỷ số dự đoán."""
+
+    home_score = ui.TextInput(
+        label="Bàn thắng đội nhà",
+        placeholder="Ví dụ: 2",
+        min_length=1,
+        max_length=2,
+        required=True,
+    )
+    away_score = ui.TextInput(
+        label="Bàn thắng đội khách",
+        placeholder="Ví dụ: 1",
+        min_length=1,
+        max_length=2,
+        required=True,
+    )
+
+    def __init__(self, fixture: dict, predictions: dict):
+        super().__init__()
+        self.fixture = fixture
+        # predictions: {fixture_id: {user_id: (home, away)}}
+        self.predictions = predictions
+        self.title = f"Dự đoán: {fixture['home']} vs {fixture['away']}"
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            h = int(self.home_score.value.strip())
+            a = int(self.away_score.value.strip())
+            if h < 0 or a < 0:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message(
+                "Tỷ số không hợp lệ. Vui lòng nhập số nguyên không âm.", ephemeral=True
+            )
+            return
+
+        fid = self.fixture["id"]
+        if fid not in self.predictions:
+            self.predictions[fid] = {}
+        self.predictions[fid][interaction.user.id] = (h, a)
+
+        await interaction.response.send_message(
+            f"Bạn đã dự đoán **{self.fixture['home']} {h} - {a} {self.fixture['away']}**. Chúc may mắn!",
+            ephemeral=True,
+        )
+        logger.info(
+            "[Football] %s (%s) predicted %s %d-%d %s",
+            interaction.user,
+            interaction.user.id,
+            self.fixture["home"],
+            h,
+            a,
+            self.fixture["away"],
+        )
+
+
+class PredictButton(ui.Button):
+    def __init__(self, fixture: dict, predictions: dict):
+        super().__init__(
+            label="Dự đoán tỷ số",
+            style=discord.ButtonStyle.primary,
+            emoji="⚽",
+            custom_id=f"predict_{fixture['id']}",
+        )
+        self.fixture = fixture
+        self.predictions = predictions
+
+    async def callback(self, interaction: discord.Interaction):
+        modal = PredictModal(fixture=self.fixture, predictions=self.predictions)
+        await interaction.response.send_modal(modal)
+
+
+class PredictView(ui.View):
+    def __init__(self, fixture: dict, predictions: dict):
+        # timeout=None so button stays alive until bot restarts
+        super().__init__(timeout=None)
+        self.add_item(PredictButton(fixture=fixture, predictions=predictions))
+
+
+# --------------------------------------------------------------------------- #
+#  Cog                                                                          #
+# --------------------------------------------------------------------------- #
 
 class Football(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._session = None
         self._fixtures = []
-        self._sent_fixture_ids = set()
+        self._sent_fixture_ids: set = set()
         self._last_fetch_at = None
         self._last_fetch_failed = False
         self._missing_key_logged = False
+
+        # {fixture_id: {user_id: (home_goals, away_goals)}}
+        self._predictions: dict[str, dict[int, tuple[int, int]]] = {}
+        # fixture_ids for which we already announced winners
+        self._announced_results: set = set()
+        # fixture_ids that are currently in-play / finished (for result polling)
+        self._tracked_for_result: set = set()
+
         self.world_cup_notifier.start()
+        self.result_checker.start()
 
     def cog_unload(self):
         self.world_cup_notifier.cancel()
+        self.result_checker.cancel()
         if self._session and not self._session.closed:
             self.bot.loop.create_task(self._session.close())
+
+    # ----------------------------------------------------------------------- #
+    #  Notification loop                                                        #
+    # ----------------------------------------------------------------------- #
 
     @tasks.loop(seconds=CHECK_INTERVAL_SECONDS)
     async def world_cup_notifier(self):
@@ -69,6 +175,40 @@ class Football(commands.Cog):
             int(NOTIFY_BEFORE.total_seconds() // 60),
         )
 
+    # ----------------------------------------------------------------------- #
+    #  Result-checking loop                                                     #
+    # ----------------------------------------------------------------------- #
+
+    @tasks.loop(seconds=int(RESULT_CHECK_INTERVAL.total_seconds()))
+    async def result_checker(self):
+        if not self._tracked_for_result:
+            return
+        token = FOOTBALL_DATA_TOKEN.strip()
+        if not token:
+            return
+
+        still_pending = set()
+        for fixture_id in list(self._tracked_for_result):
+            if fixture_id in self._announced_results:
+                continue
+            result = await self._fetch_match_result(token, fixture_id)
+            if result is None:
+                still_pending.add(fixture_id)
+                continue
+            # result = {"home": int, "away": int, "home_name": str, "away_name": str}
+            await self._announce_prediction_results(fixture_id, result)
+            self._announced_results.add(fixture_id)
+
+        self._tracked_for_result = still_pending
+
+    @result_checker.before_loop
+    async def before_result_checker(self):
+        await self.bot.wait_until_ready()
+
+    # ----------------------------------------------------------------------- #
+    #  Commands                                                                 #
+    # ----------------------------------------------------------------------- #
+
     @commands.command(name="football", aliases=["wc", "worldcup"])
     async def football(self, ctx: commands.Context):
         """Xem cac tran World Cup 2026 trong 24 gio toi."""
@@ -93,6 +233,41 @@ class Football(commands.Cog):
             ctx.author.id,
             len(upcoming),
         )
+
+    @commands.command(name="predict", aliases=["dudoan"])
+    async def predict_cmd(self, ctx: commands.Context, *, match_number: int = None):
+        """Dự đoán tỷ số trận World Cup 2026 trong 24 giờ tới.
+
+        Dùng: !predict <số thứ tự trận> (xem số thứ tự bằng !football)
+        """
+        token = FOOTBALL_DATA_TOKEN.strip()
+        if not token:
+            await ctx.send("Chưa cấu hình `FOOTBALL_DATA_TOKEN`.")
+            return
+
+        async with ctx.typing():
+            await self._refresh_fixtures_if_needed(token)
+            upcoming = self._fixtures_in_next_24_hours()
+
+        if not upcoming:
+            await ctx.send("Không có trận World Cup 2026 nào trong 24 giờ tới.")
+            return
+
+        if match_number is None or not (1 <= match_number <= len(upcoming)):
+            embed = self._build_upcoming_embed(upcoming)
+            embed.set_footer(text=f"Dùng !predict <số> để chọn trận | Source: football-data.org")
+            await ctx.send("Chọn trận muốn dự đoán:", embed=embed)
+            return
+
+        fixture = upcoming[match_number - 1]
+        view = PredictView(fixture=fixture, predictions=self._predictions)
+        embed = self._build_match_embed(fixture)
+        embed.title = f"Dự đoán: {fixture['home']} vs {fixture['away']}"
+        await ctx.send(embed=embed, view=view)
+
+    # ----------------------------------------------------------------------- #
+    #  Internal helpers                                                         #
+    # ----------------------------------------------------------------------- #
 
     async def _session_or_create(self):
         if self._session is None or self._session.closed:
@@ -162,6 +337,101 @@ class Football(commands.Cog):
         fixtures.sort(key=lambda fixture: fixture["kickoff"])
         return fixtures
 
+    async def _fetch_match_result(self, token: str, fixture_id) -> dict | None:
+        """Fetch result for a specific match by ID. Returns None if not finished."""
+        session = await self._session_or_create()
+        url = f"{FOOTBALL_DATA_BASE_URL}/matches/{fixture_id}"
+        headers = {"X-Auth-Token": token}
+
+        try:
+            async with session.get(url, headers=headers) as response:
+                if response.status >= 400:
+                    return None
+                data = await response.json(content_type=None)
+        except Exception as exc:
+            logger.error("[Football] Error fetching result for %s: %s", fixture_id, exc)
+            return None
+
+        status = data.get("status", "")
+        if status not in ("FINISHED",):
+            return None
+
+        score = data.get("score", {})
+        full_time = score.get("fullTime") or {}
+        home_goals = full_time.get("home")
+        away_goals = full_time.get("away")
+
+        if home_goals is None or away_goals is None:
+            return None
+
+        home_name = self._team_name(data.get("homeTeam") or {})
+        away_name = self._team_name(data.get("awayTeam") or {})
+
+        return {
+            "home": int(home_goals),
+            "away": int(away_goals),
+            "home_name": home_name,
+            "away_name": away_name,
+        }
+
+    async def _announce_prediction_results(self, fixture_id, result: dict):
+        """Gửi thông báo kết quả và người dự đoán đúng."""
+        preds = self._predictions.get(fixture_id, {})
+        correct_users = []
+        near_users = []  # đúng hiệu số nhưng sai tỷ số chính xác
+
+        for user_id, (ph, pa) in preds.items():
+            if ph == result["home"] and pa == result["away"]:
+                correct_users.append((user_id, ph, pa))
+            elif (ph - pa) == (result["home"] - result["away"]):
+                near_users.append((user_id, ph, pa))
+
+        home_name = result["home_name"]
+        away_name = result["away_name"]
+        actual = f"**{home_name} {result['home']} - {result['away']} {away_name}**"
+
+        lines = [f"Kết quả chính thức: {actual}\n"]
+
+        if preds:
+            lines.append(f"Tổng số người dự đoán: **{len(preds)}**")
+
+        if correct_users:
+            mentions = ", ".join(f"<@{uid}>" for uid, _, _ in correct_users)
+            lines.append(f"\n🏆 **Dự đoán chính xác tỷ số:** {mentions}")
+        else:
+            lines.append("\nKhông có ai dự đoán chính xác tỷ số.")
+
+        if near_users:
+            mentions = ", ".join(f"<@{uid}>" for uid, _, _ in near_users)
+            lines.append(f"✅ **Dự đoán đúng hiệu số:** {mentions}")
+
+        if not preds:
+            lines.append("Không có ai tham gia dự đoán trận này.")
+
+        embed = discord.Embed(
+            title=f"⚽ Kết quả dự đoán: {home_name} vs {away_name}",
+            description="\n".join(lines),
+            color=discord.Color.gold(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.set_footer(text="World Cup 2026 | football-data.org")
+
+        for channel_id in NOTIFY_CHANNEL_IDS:
+            channel = await self._get_messageable_channel(channel_id)
+            if channel is None:
+                continue
+            try:
+                await channel.send(embed=embed)
+                logger.info(
+                    "[Football] Announced prediction results for fixture %s in channel %s",
+                    fixture_id,
+                    channel_id,
+                )
+            except Exception as exc:
+                logger.error(
+                    "[Football] Failed to announce results in channel %s: %s", channel_id, exc
+                )
+
     @staticmethod
     def _parse_kickoff(raw_date):
         if not raw_date:
@@ -215,6 +485,9 @@ class Football(commands.Cog):
 
             await self._notify_channels(fixture)
             self._sent_fixture_ids.add(fixture_id)
+            # Start tracking this match for result announcements
+            if fixture_id not in self._announced_results:
+                self._tracked_for_result.add(fixture_id)
 
     async def _notify_channels(self, fixture):
         embed = self._build_match_embed(fixture)
@@ -222,6 +495,7 @@ class Football(commands.Cog):
             f"World Cup 2026: {fixture['home']} vs {fixture['away']} "
             f"starts in about 5 minutes."
         )
+        view = PredictView(fixture=fixture, predictions=self._predictions)
 
         for channel_id in NOTIFY_CHANNEL_IDS:
             channel = await self._get_messageable_channel(channel_id)
@@ -230,7 +504,7 @@ class Football(commands.Cog):
                 continue
 
             try:
-                await channel.send(content=content, embed=embed)
+                await channel.send(content=content, embed=embed, view=view)
                 logger.info(
                     "[Football] Sent World Cup notification for fixture %s to channel %s",
                     fixture["id"],
@@ -269,7 +543,7 @@ class Football(commands.Cog):
         embed.add_field(name="Kickoff", value=kickoff_local.strftime("%H:%M %d/%m/%Y GMT+7"), inline=False)
         embed.add_field(name="Round", value=fixture["round"], inline=True)
         embed.add_field(name="Venue", value=venue, inline=True)
-        embed.set_footer(text="Source: football-data.org")
+        embed.set_footer(text="Source: football-data.org | Nhấn nút bên dưới để dự đoán tỷ số!")
         return embed
 
     @staticmethod
