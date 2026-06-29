@@ -80,7 +80,7 @@ class Spam1(commands.Cog):
 
         if state.repeat_count == WARNING_REPEAT_COUNT:
             await message.channel.send(
-                f"{message.author.mention} vui lòng không spam cùng một nội dung trong 30 giây.",
+                f"{message.author.mention} vui lòng không spam",
                 allowed_mentions=discord.AllowedMentions(
                     users=True,
                     roles=False,
