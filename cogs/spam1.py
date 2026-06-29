@@ -102,7 +102,7 @@ class Spam1(commands.Cog):
                 reason=f"Spam cùng một nội dung {TIMEOUT_REPEAT_COUNT} lần trong 30 giây",
             )
             await message.channel.send(
-                f"{member.mention} đã bị timeout 1 giờ vì spam cùng một nội dung {TIMEOUT_REPEAT_COUNT} lần trong 30 giây.",
+                f"{member.mention} đã bị timeout 1 giờ vì spam cùng một nội dung {TIMEOUT_REPEAT_COUNT} lần .",
                 allowed_mentions=discord.AllowedMentions(
                     users=True,
                     roles=False,
