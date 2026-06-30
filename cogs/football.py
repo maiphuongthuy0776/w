@@ -23,13 +23,13 @@ NOTIFY_CHANNEL_IDS = [1486759905431130175,1509761407535546419]
 
 LOCAL_TZ = timezone(timedelta(hours=7))
 NOTIFY_BEFORE = timedelta(minutes=5)
-CHECK_INTERVAL_SECONDS = 60
+CHECK_INTERVAL_SECONDS = 180
 CACHE_REFRESH_INTERVAL = timedelta(minutes=60)
 ERROR_RETRY_INTERVAL = timedelta(minutes=5)
 REQUEST_TIMEOUT_SECONDS = 20
 
 # How often to check for finished matches to announce predictions
-RESULT_CHECK_INTERVAL = timedelta(minutes=5)
+RESULT_CHECK_INTERVAL = timedelta(minutes=10)
 
 
 # --------------------------------------------------------------------------- #
