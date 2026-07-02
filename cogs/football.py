@@ -24,7 +24,8 @@ WORLD_CUP_SEASON = 2026
 NOTIFY_CHANNEL_IDS = [1486759905431130175, 1509761407535546419]
 
 LOCAL_TZ = timezone(timedelta(hours=7))
-NOTIFY_BEFORE = timedelta(minutes=5)
+PREDICTION_OPEN_BEFORE = timedelta(minutes=15)
+NOTIFY_BEFORE = PREDICTION_OPEN_BEFORE
 CHECK_INTERVAL_SECONDS = 180
 CACHE_REFRESH_INTERVAL = timedelta(minutes=60)
 ERROR_RETRY_INTERVAL = timedelta(minutes=5)
@@ -32,6 +33,37 @@ REQUEST_TIMEOUT_SECONDS = 20
 
 # How often to check for finished matches to announce predictions
 RESULT_CHECK_INTERVAL = timedelta(minutes=10)
+
+def _prediction_window_status(fixture: dict) -> tuple[bool, str | None]:
+    """Return whether prediction is currently allowed for this fixture."""
+    now = datetime.now(timezone.utc)
+    seconds_until_kickoff = (fixture["kickoff"] - now).total_seconds()
+    open_seconds = PREDICTION_OPEN_BEFORE.total_seconds()
+    open_minutes = int(open_seconds // 60)
+    kickoff_local = fixture["kickoff"].astimezone(LOCAL_TZ)
+    open_at_local = (fixture["kickoff"] - PREDICTION_OPEN_BEFORE).astimezone(LOCAL_TZ)
+
+    if seconds_until_kickoff <= 0:
+        return (
+            False,
+            (
+                f"Trận **{fixture['home']} vs {fixture['away']}** đã bắt đầu, "
+                "không thể dự đoán nữa."
+            ),
+        )
+
+    if seconds_until_kickoff > open_seconds:
+        return (
+            False,
+            (
+                f"Chưa mở dự đoán cho trận **{fixture['home']} vs {fixture['away']}**.\n"
+                f"Chỉ được dự đoán trong **{open_minutes} phút** trước khi trận bắt đầu.\n"
+                f"Dự đoán mở lúc: `{open_at_local.strftime('%H:%M %d/%m/%Y GMT+7')}`.\n"
+                f"Giờ bóng lăn: `{kickoff_local.strftime('%H:%M %d/%m/%Y GMT+7')}`."
+            ),
+        )
+
+    return True, None
 
 
 # --------------------------------------------------------------------------- #
@@ -68,6 +100,12 @@ class PredictModal(ui.Modal, title="Dự đoán tỷ số trận đấu"):
     async def on_submit(self, interaction: discord.Interaction):
         fid = self.fixture["id"]
         user_id = interaction.user.id
+
+        allowed, reason = _prediction_window_status(self.fixture)
+
+        if not allowed:
+            await interaction.response.send_message(reason, ephemeral=True)
+            return
 
         # Chặn nếu user đã dự đoán trận này rồi
         if fid in self.predictions and user_id in self.predictions[fid]:
@@ -131,6 +169,12 @@ class PredictButton(ui.Button):
     async def callback(self, interaction: discord.Interaction):
         fid = self.fixture["id"]
         user_id = interaction.user.id
+
+        allowed, reason = _prediction_window_status(self.fixture)
+
+        if not allowed:
+            await interaction.response.send_message(reason, ephemeral=True)
+            return
 
         # Chặn ngay khi bấm nút nếu user đã dự đoán trận này
         if fid in self.predictions and user_id in self.predictions[fid]:
@@ -289,6 +333,7 @@ class Football(commands.Cog):
     async def predict_cmd(self, ctx: commands.Context, *, match_number: int = None):
         """Dự đoán tỷ số trận World Cup 2026 trong 24 giờ tới.
 
+        Chỉ được dự đoán trong 15 phút trước khi trận bắt đầu.
         Dùng: !predict <số thứ tự trận> xem số thứ tự bằng !football
         """
         token = FOOTBALL_DATA_TOKEN.strip()
@@ -317,6 +362,12 @@ class Football(commands.Cog):
         fid = fixture["id"]
         user_id = ctx.author.id
 
+        allowed, reason = _prediction_window_status(fixture)
+
+        if not allowed:
+            await ctx.send(f"{ctx.author.mention}, {reason}")
+            return
+
         # Chặn luôn ở command nếu user đã từng dự đoán trận này
         if fid in self._predictions and user_id in self._predictions[fid]:
             old_h, old_a = self._predictions[fid][user_id]
@@ -333,6 +384,38 @@ class Football(commands.Cog):
         embed.title = f"Dự đoán: {fixture['home']} vs {fixture['away']}"
 
         await ctx.send(embed=embed, view=view)
+
+    @commands.command(name="showwc", aliases=["showpredict", "showdudoan"])
+    async def showwc(self, ctx: commands.Context, *, match_number: int = None):
+        """Xem dự đoán của mọi người cho trận World Cup 2026 trong 24 giờ tới.
+
+        Dùng: !showwc <số thứ tự trận> xem số thứ tự bằng !football
+        """
+        token = FOOTBALL_DATA_TOKEN.strip()
+
+        if not token:
+            await ctx.send("Chưa cấu hình `FOOTBALL_DATA_TOKEN`.")
+            return
+
+        async with ctx.typing():
+            await self._refresh_fixtures_if_needed(token)
+            upcoming = self._fixtures_in_next_24_hours()
+
+        if not upcoming:
+            await ctx.send("Không có trận World Cup 2026 nào trong 24 giờ tới.")
+            return
+
+        if match_number is None or not (1 <= match_number <= len(upcoming)):
+            embed = self._build_upcoming_embed(upcoming)
+            embed.set_footer(
+                text="Dùng !showwc <số> để xem dự đoán trận đó | Source: football-data.org"
+            )
+            await ctx.send("Chọn trận muốn xem dự đoán:", embed=embed)
+            return
+
+        fixture = upcoming[match_number - 1]
+        embed = self._build_predictions_embed(fixture, match_number)
+        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
     # ----------------------------------------------------------------------- #
     #  Internal helpers                                                       #
@@ -590,7 +673,8 @@ class Football(commands.Cog):
 
         content = (
             f"World Cup 2026: {fixture['home']} vs {fixture['away']} "
-            f"starts in about 5 minutes."
+            f"còn khoảng {int(NOTIFY_BEFORE.total_seconds() // 60)} phút nữa bắt đầu. "
+            "Dự đoán tỷ số đã mở!"
         )
 
         view = PredictView(fixture=fixture, predictions=self._predictions)
@@ -631,6 +715,38 @@ class Football(commands.Cog):
 
         return channel
 
+    def _build_predictions_embed(self, fixture, match_number: int):
+        kickoff_local = fixture["kickoff"].astimezone(LOCAL_TZ)
+        preds = self._predictions.get(fixture["id"], {})
+
+        embed = discord.Embed(
+            title=f"Dự đoán trận {match_number}: {fixture['home']} vs {fixture['away']}",
+            color=discord.Color.blurple(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(
+            name="Kickoff",
+            value=kickoff_local.strftime("%H:%M %d/%m/%Y GMT+7"),
+            inline=False,
+        )
+        embed.add_field(name="Round", value=fixture["round"], inline=False)
+
+        if not preds:
+            embed.description = "Chưa có ai dự đoán trận này."
+        else:
+            lines = []
+
+            for index, (user_id, (home_goals, away_goals)) in enumerate(preds.items(), start=1):
+                lines.append(
+                    f"`{index}.` <@{user_id}> dự đoán: "
+                    f"**{fixture['home']} {home_goals} - {away_goals} {fixture['away']}**"
+                )
+
+            embed.description = "\n".join(lines)
+            embed.set_footer(text=f"Tổng số dự đoán: {len(preds)}")
+
+        return embed
+
     @staticmethod
     def _build_match_embed(fixture):
         kickoff_local = fixture["kickoff"].astimezone(LOCAL_TZ)
@@ -654,7 +770,10 @@ class Football(commands.Cog):
         embed.add_field(name="Round", value=fixture["round"], inline=True)
         embed.add_field(name="Venue", value=venue, inline=True)
         embed.set_footer(
-            text="Source: football-data.org | Nhấn nút bên dưới để dự đoán tỷ số!"
+            text=(
+                "Source: football-data.org | "
+                f"Chỉ được dự đoán trong {int(PREDICTION_OPEN_BEFORE.total_seconds() // 60)} phút trước giờ bóng lăn!"
+            )
         )
 
         return embed
