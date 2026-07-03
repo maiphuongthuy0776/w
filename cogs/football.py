@@ -29,7 +29,7 @@ ERROR_RETRY_INTERVAL = timedelta(minutes=5)
 REQUEST_TIMEOUT_SECONDS = 20
 
 # How often to check for finished matches to announce predictions
-RESULT_CHECK_INTERVAL = timedelta(minutes=10)
+RESULT_CHECK_INTERVAL = timedelta(minutes=40)
 
 # Khoá dự đoán sau 5 phút kể từ kickoff
 PREDICTION_LOCK_AFTER = timedelta(minutes=5)
