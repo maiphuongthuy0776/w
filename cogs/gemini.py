@@ -58,7 +58,7 @@ class GeminiChat(commands.Cog):
             ],
             "generationConfig": {
                 "temperature": 0.7,
-                "maxOutputTokens": 220,
+                "maxOutputTokens": 1000,
             },
         }
 
